@@ -1,0 +1,17 @@
+import { Code2, Heart, Landmark, Mail, ShieldCheck, Smartphone } from 'lucide-react'
+import { Logo } from '@/components/Logo'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+
+export default function AboutPage() {
+  return <div className="mx-auto max-w-5xl space-y-8 animate-fade-up">
+    <section className="relative overflow-hidden rounded-3xl bg-zinc-950 px-6 py-14 text-center text-white sm:px-12"><div className="absolute inset-0 subtle-grid opacity-20" /><div className="absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 rounded-full bg-emerald-500/15 blur-3xl" /><div className="relative"><Logo className="mx-auto w-fit" /><Badge className="mt-8 border-white/10 bg-white/10 text-zinc-300">Version 1.0.0</Badge><h2 className="mx-auto mt-5 max-w-2xl text-3xl font-bold tracking-[-.04em] sm:text-5xl">Better money habits, made simple.</h2><p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-zinc-400">Cashbook helps people and small businesses understand every shilling, organize expenses, and build a calmer financial future.</p></div></section>
+    <section><div className="text-center"><p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">Built with purpose</p><h3 className="mt-2 text-2xl font-bold">Meet the creators</h3><p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">A product team focused on accessible, private and useful financial software for everyday life.</p></div><div className="mt-6 grid gap-4 md:grid-cols-3">{[
+      { icon: Code2, role: 'Product & Engineering', name: 'Cashbook Studio', text: 'Designing secure, dependable financial tools across mobile and desktop.' },
+      { icon: Smartphone, role: 'Mobile Experience', name: 'Native Apps Team', text: 'Creating thoughtful Android, iOS, Windows and macOS experiences.' },
+      { icon: ShieldCheck, role: 'Privacy & Infrastructure', name: 'Platform Team', text: 'Protecting account data with authentication, encryption in transit and strict RLS.' },
+    ].map(({ icon: Icon, role, name, text }) => <Card key={role}><CardContent className="p-6 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400"><Icon className="h-5 w-5" /></span><p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{role}</p><h4 className="mt-1 font-bold">{name}</h4><p className="mt-3 text-xs leading-5 text-muted-foreground">{text}</p></CardContent></Card>)}</div></section>
+    <section className="grid gap-4 sm:grid-cols-3"><div className="rounded-2xl border bg-card p-5"><Landmark className="h-5 w-5 text-emerald-500" /><p className="mt-3 font-semibold">Your data, your account</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Private financial records are isolated per user.</p></div><div className="rounded-2xl border bg-card p-5"><Heart className="h-5 w-5 text-rose-500" /><p className="mt-3 font-semibold">Made for real life</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Fast enough for a daily habit and flexible enough to grow.</p></div><div className="rounded-2xl border bg-card p-5"><Mail className="h-5 w-5 text-sky-500" /><p className="mt-3 font-semibold">Support</p><p className="mt-1 text-xs leading-5 text-muted-foreground">support@cashbook.app</p></div></section>
+    <footer className="pb-4 text-center text-xs text-muted-foreground">© {new Date().getFullYear()} Cashbook Studio. All rights reserved.</footer>
+  </div>
+}

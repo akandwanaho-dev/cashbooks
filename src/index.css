@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 350 89% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 160 84% 39%;
+    --radius: .85rem;
+  }
+
+  .dark {
+    --background: 240 10% 4%;
+    --foreground: 210 40% 98%;
+    --card: 240 6% 7%;
+    --card-foreground: 210 40% 98%;
+    --popover: 240 6% 7%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 158 64% 52%;
+    --primary-foreground: 164 86% 8%;
+    --muted: 240 4% 13%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 240 4% 14%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 350 89% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 158 64% 52%;
+  }
+
+  * { @apply border-border; }
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  button, input, select { font: inherit; }
+  ::selection { @apply bg-emerald-200 text-emerald-950 dark:bg-emerald-800 dark:text-emerald-50; }
+}
+
+@layer utilities {
+  .tabular { font-variant-numeric: tabular-nums; }
+  .glass { @apply border border-white/60 bg-white/80 backdrop-blur-xl dark:border-white/[.08] dark:bg-zinc-950/75; }
+  .subtle-grid {
+    background-image: linear-gradient(to right, rgba(100,116,139,.07) 1px, transparent 1px), linear-gradient(to bottom, rgba(100,116,139,.07) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .scrollbar-thin { scrollbar-width: thin; scrollbar-color: rgb(161 161 170 / .5) transparent; }
+}
+
+/* Recharts focus and tooltip polish. */
+.recharts-wrapper:focus, .recharts-surface:focus { outline: none; }
+.recharts-cartesian-axis-tick-value { fill: hsl(var(--muted-foreground)); font-size: 11px; }

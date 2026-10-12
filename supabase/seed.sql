@@ -1,0 +1,2 @@
+-- Production starter quotes are inserted idempotently by product_migration.sql.
+-- Add local-only test fixtures here when needed.

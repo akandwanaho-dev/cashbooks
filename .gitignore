@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.env
+.env.local
+*.tsbuildinfo
+.DS_Store
+
+# Capacitor native build output and local SDK/signing files
+android/.gradle/
+android/local.properties
+android/app/build/
+*.jks
+*.keystore
+key.properties
+
+ios/App/Pods/
+ios/DerivedData/
+
+# Tauri/Rust output
+src-tauri/target/
+src-tauri/gen/
