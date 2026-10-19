@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Apple, ArrowRight, BarChart3, Check, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react'
+import { AlertTriangle, ArrowRight, BarChart3, Check, Download, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Logo } from '@/components/Logo'
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { useApp } from '@/contexts/AppContext'
 
 export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
-  const { user, enableDemo, signIn, signInWithProvider, signUp } = useApp()
+  const { user, cloudError, cloudStatus, enableDemo, signIn, signUp } = useApp()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -44,13 +44,6 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     } finally {
       setSubmitting(false)
     }
-  }
-
-  const socialSignIn = async (provider: 'google' | 'apple') => {
-    setSubmitting(true)
-    try { await signInWithProvider(provider) }
-    catch (error) { toast.error(error instanceof Error ? error.message : `Could not continue with ${provider}.`) }
-    finally { setSubmitting(false) }
   }
 
   return (
@@ -99,11 +92,8 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                   <p className="mt-2 text-sm text-muted-foreground">{mode === 'login' ? 'Sign in to continue to your private ledger.' : 'Start tracking cash clearly in just a moment.'}</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <Button type="button" variant="outline" className="h-11" onClick={() => void socialSignIn('google')} disabled={submitting}><span className="text-base font-bold text-blue-500">G</span>Google</Button>
-                  <Button type="button" variant="outline" className="h-11" onClick={() => void socialSignIn('apple')} disabled={submitting}><Apple className="h-4 w-4" />Apple</Button>
-                </div>
-                <div className="relative my-5"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center"><span className="bg-card px-3 text-[11px] uppercase tracking-wider text-muted-foreground">or use email</span></div></div>
+                {cloudStatus === 'checking' && <div className="mb-5 rounded-xl border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">Checking the Supabase database…</div>}
+                {cloudError && <div role="alert" className="mb-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{cloudError}</span></div>}
                 <form onSubmit={submit} className="space-y-5">
                   <div className="space-y-2">
                     <Label htmlFor="email">Email address</Label>
@@ -125,7 +115,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
               </>
             )}
           </div>
-          <p className="text-center text-[11px] text-muted-foreground">Your ledger data remains isolated to your account.</p>
+          <p className="flex items-center justify-center gap-3 text-center text-[11px] text-muted-foreground"><span>Your ledger data remains isolated to your account.</span><Link to="/downloads" className="inline-flex items-center gap-1 font-semibold text-emerald-600 hover:underline dark:text-emerald-400"><Download className="h-3 w-3" />Downloads</Link></p>
         </section>
       </div>
     </main>

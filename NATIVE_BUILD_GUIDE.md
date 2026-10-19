@@ -92,7 +92,7 @@ Equivalent explicit commands are:
 ```bash
 npm install \
   @capacitor/core @capacitor/android @capacitor/ios \
-  @capacitor/app @capacitor/network @capacitor/preferences \
+  @capacitor/network @capacitor/preferences \
   @capacitor/local-notifications dexie \
   @tauri-apps/api @tauri-apps/plugin-notification
 
@@ -371,16 +371,9 @@ IndexedDB is persistent and app-sandboxed in Capacitor WebViews and Tauri. For r
 
 For multi-device edit conflicts, the current practical policy is last accepted cloud write. For formal conflict guarantees, move writes to a Supabase RPC that accepts the client’s previous `updated_at` version and rejects stale updates, then show a merge dialog.
 
-### Authentication redirects
+### Authentication
 
-Email/password sign-in works directly in the native WebView. If adding OAuth or magic links, register custom schemes/universal links in Android and iOS and allow these Supabase redirect URLs:
-
-```text
-com.cashbook.app://auth/callback
-https://your-production-domain.example/auth/callback
-```
-
-Handle `App.addListener('appUrlOpen', ...)`, exchange the returned code with Supabase, and never put service credentials in a deep link.
+Cashbook uses Supabase email/password authentication only. It works directly in the native WebView and does not require OAuth provider credentials, browser plugins, custom callback schemes, or PKCE deep-link handling. Keep email confirmation and the production Site URL configured in the Supabase Authentication settings.
 
 ---
 

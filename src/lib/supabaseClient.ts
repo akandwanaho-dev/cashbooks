@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { getSupabaseErrorMessage, validateSupabaseSchema } from '@/lib/supabaseErrors'
 import type { AppConfig } from '@/types'
 
 const CONFIG_KEY = 'cashbook.database.config.v1'
@@ -73,7 +74,9 @@ export function getSupabaseClient(config: AppConfig | null): SupabaseClient | nu
   const fingerprint = `${config.url}:${config.anonKey}`
   if (!cachedClient || cachedFingerprint !== fingerprint) {
     cachedClient = createClient(config.url, config.anonKey, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      // Cashbook intentionally supports email/password only. URL session parsing
+      // stays off so stale OAuth callbacks cannot produce PKCE errors.
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
       realtime: { params: { eventsPerSecond: 10 } },
     })
     cachedFingerprint = fingerprint
@@ -87,12 +90,24 @@ export function resetSupabaseClient() {
 }
 
 export async function testSupabaseConnection(url: string, anonKey: string) {
-  if (!validUrl(url.trim())) throw new Error('Enter a valid HTTPS Supabase project URL.')
-  if (anonKey.trim().length < 20) throw new Error('Enter a valid anon or publishable key.')
-  const client = createClient(url.trim().replace(/\/$/, ''), anonKey.trim(), {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-  const { error } = await client.auth.getSession()
-  if (error) throw error
-  return true
+  const normalizedUrl = url.trim().replace(/\/$/, '')
+  const normalizedKey = anonKey.trim()
+  if (!validUrl(normalizedUrl)) throw new Error('Enter a valid HTTPS Supabase project URL.')
+  if (normalizedKey.length < 20) throw new Error('Enter a valid anon or publishable key.')
+
+  try {
+    const health = await fetch(`${normalizedUrl}/auth/v1/health`, {
+      headers: { apikey: normalizedKey },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!health.ok) throw new Error(`Supabase authentication health check returned ${health.status}.`)
+
+    const client = createClient(normalizedUrl, normalizedKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    })
+    await validateSupabaseSchema(client)
+    return true
+  } catch (error) {
+    throw new Error(getSupabaseErrorMessage(error, 'Could not connect to Supabase with these settings.'))
+  }
 }

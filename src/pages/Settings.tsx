@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useApp } from '@/contexts/AppContext'
 import { useCurrency } from '@/contexts/CurrencyContext'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { applyTheme, getTheme, type Theme } from '@/lib/theme'
 import { cancelDailyReminder, getReminderPreferences, scheduleDailyReminder, sendTestNotification } from '@/services/notificationService'
 import type { CurrencyCode } from '@/types'
@@ -23,6 +24,7 @@ const themes: Array<{ value: Theme; label: string; icon: typeof Sun }> = [
 
 export default function SettingsPage() {
   const { config, user, isDemo, resetConfiguration } = useApp()
+  const { isAdmin } = useWorkspace()
   const { preferredCurrency, currencies, ratesUpdatedAt, rateToUGX, formatMoney, setPreferredCurrency } = useCurrency()
   const [theme, setTheme] = useState<Theme>(() => getTheme())
   const [resetOpen, setResetOpen] = useState(false)
@@ -89,12 +91,12 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 animate-fade-up">
-      <section><h2 className="text-2xl font-bold tracking-[-.035em] sm:text-3xl">Settings</h2><p className="mt-1 text-sm text-muted-foreground">Manage the way your cash book looks and connects.</p></section>
+      <section><h2 className="text-2xl font-bold tracking-[-.035em] sm:text-3xl">Settings</h2><p className="mt-1 text-sm text-muted-foreground">Manage your cash book preferences.</p></section>
 
       <Card>
         <CardHeader className="border-b"><div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300"><UserRound className="h-[18px] w-[18px]" /></span><div><CardTitle>Account</CardTitle><CardDescription className="mt-1">Your signed-in workspace identity</CardDescription></div></div></CardHeader>
         <CardContent className="pt-6">
-          <div className="flex items-center gap-4"><span className="grid h-12 w-12 place-items-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{initials(user?.email)}</span><div className="min-w-0"><p className="truncate text-sm font-semibold">{user?.email}</p><p className="mt-0.5 text-xs text-muted-foreground">{isDemo ? 'Demo workspace' : 'Authenticated Supabase user'}</p></div>{isDemo ? <Badge variant="secondary" className="ml-auto">Preview</Badge> : <Badge variant="success" className="ml-auto"><Check className="h-3 w-3" />Verified</Badge>}</div>
+          <div className="flex items-center gap-4"><span className="grid h-12 w-12 place-items-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{initials(user?.email)}</span><div className="min-w-0"><p className="truncate text-sm font-semibold">{user?.email}</p><p className="mt-0.5 text-xs text-muted-foreground">{isDemo ? 'Demo workspace' : 'Secure Cashbook account'}</p></div>{isDemo ? <Badge variant="secondary" className="ml-auto">Preview</Badge> : <Badge variant="success" className="ml-auto"><Check className="h-3 w-3" />Verified</Badge>}</div>
         </CardContent>
       </Card>
 
@@ -126,8 +128,8 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="border-b"><div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400"><Database className="h-[18px] w-[18px]" /></span><div><CardTitle>Database connection</CardTitle><CardDescription className="mt-1">Supabase project and local credential storage</CardDescription></div></div></CardHeader>
+      {isAdmin && <Card>
+        <CardHeader className="border-b"><div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400"><Database className="h-[18px] w-[18px]" /></span><div><CardTitle>Database connection</CardTitle><CardDescription className="mt-1">Administrator-only Supabase controls</CardDescription></div></div></CardHeader>
         <CardContent className="space-y-5 pt-6">
           <div className="flex flex-col gap-4 rounded-xl border bg-muted/25 p-4 sm:flex-row sm:items-center">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border bg-background"><span className={`h-2.5 w-2.5 rounded-full ${isDemo ? 'bg-amber-400' : 'bg-emerald-500'}`} /></div>
@@ -139,7 +141,7 @@ export default function SettingsPage() {
             <Button variant="ghost" asChild><a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">Open Supabase <ExternalLink className="h-4 w-4" /></a></Button>
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
       <Card>
         <CardHeader className="border-b"><CardTitle>Appearance</CardTitle><CardDescription>Choose how Cashbook looks on this device.</CardDescription></CardHeader>
@@ -148,12 +150,12 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+      {isAdmin && <Dialog open={resetOpen} onOpenChange={setResetOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader><span className="mb-1 grid h-10 w-10 place-items-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400"><TriangleAlert className="h-[18px] w-[18px]" /></span><DialogTitle>{isDemo ? 'Connect a live database?' : 'Change database connection?'}</DialogTitle><DialogDescription>{isDemo ? 'This exits the demo and returns to database setup. Your demo entries stay in this browser.' : 'You will be signed out and the saved project URL and publishable key will be removed from this browser. Your Supabase data will not be deleted.'}</DialogDescription></DialogHeader>
           <DialogFooter className="mt-3"><Button variant="outline" onClick={() => setResetOpen(false)}>Cancel</Button><Button variant="destructive" onClick={reset} disabled={resetting}>{resetting ? 'Resetting…' : 'Continue'}</Button></DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
     </div>
   )
 }

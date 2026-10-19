@@ -1,9 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Network } from '@capacitor/network'
-import { App as CapacitorApp } from '@capacitor/app'
-import { Browser } from '@capacitor/browser'
-import { Capacitor } from '@capacitor/core'
-import type { Provider, RealtimePostgresChangesPayload, Session } from '@supabase/supabase-js'
+import type { RealtimePostgresChangesPayload, Session } from '@supabase/supabase-js'
 import {
   clearStoredConfiguration,
   getSupabaseClient,
@@ -12,6 +9,7 @@ import {
   persistDemoMode,
 } from '@/lib/supabaseClient'
 import { seedTransactions } from '@/lib/demoData'
+import { getSupabaseErrorMessage, isSupabaseNetworkError, validateSupabaseSchema } from '@/lib/supabaseErrors'
 import {
   cacheCloudSnapshot,
   cacheTransaction,
@@ -25,6 +23,7 @@ import type { AppConfig, AppUser, Transaction, TransactionInput } from '@/types'
 
 const DEMO_DATA_KEY = 'cashbook.demo.transactions.v2'
 type SignUpResult = { needsEmailConfirmation: boolean }
+export type CloudStatus = 'idle' | 'checking' | 'ready' | 'error'
 
 interface AppContextValue {
   config: AppConfig | null
@@ -36,17 +35,20 @@ interface AppContextValue {
   isOnline: boolean
   isSyncing: boolean
   pendingChanges: number
+  cloudStatus: CloudStatus
+  cloudError: string | null
+  reportCloudError: (error: unknown, fallback?: string) => string
+  clearCloudError: () => void
   configureSupabase: (url: string, anonKey: string) => void
   enableDemo: () => void
   resetConfiguration: () => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
-  signInWithProvider: (provider: 'google' | 'apple') => Promise<void>
   signUp: (email: string, password: string) => Promise<SignUpResult>
   signOut: () => Promise<void>
   addTransaction: (input: TransactionInput) => Promise<void>
   updateTransaction: (id: string, input: TransactionInput) => Promise<void>
   deleteTransaction: (id: string) => Promise<void>
-  refreshTransactions: () => Promise<void>
+  refreshTransactions: () => Promise<boolean>
   syncNow: () => Promise<void>
 }
 
@@ -74,9 +76,7 @@ function normalizeTransaction(row: Record<string, unknown>): Transaction {
 }
 
 function isNetworkFailure(error: unknown) {
-  if (!navigator.onLine) return true
-  const message = error instanceof Error ? error.message : String(error)
-  return /failed to fetch|network|load failed|offline|timeout/i.test(message)
+  return !navigator.onLine || isSupabaseNetworkError(error)
 }
 
 function readDemoTransactions() {
@@ -99,10 +99,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine)
   const [isSyncing, setIsSyncing] = useState(false)
   const [pendingChanges, setPendingChanges] = useState(0)
+  const [cloudStatus, setCloudStatus] = useState<CloudStatus>('idle')
+  const [cloudError, setCloudError] = useState<string | null>(null)
   const syncLock = useRef(false)
 
   const client = useMemo(() => getSupabaseClient(config), [config])
   const isDemo = config?.mode === 'demo'
+
+  const reportCloudError = useCallback((error: unknown, fallback?: string) => {
+    const message = getSupabaseErrorMessage(error, fallback)
+    setCloudError(message)
+    setCloudStatus('error')
+    return message
+  }, [])
+  const clearCloudError = useCallback(() => setCloudError(null), [])
+
+  // Validate the product schema once up front. This prevents every page and
+  // Realtime channel from emitting its own error when migrations are missing.
+  useEffect(() => {
+    if (!client || isDemo) {
+      setCloudStatus('idle')
+      setCloudError(null)
+      return
+    }
+    let active = true
+    setCloudStatus('checking')
+    setCloudError(null)
+    void validateSupabaseSchema(client)
+      .then(() => {
+        if (!active) return
+        setCloudStatus('ready')
+        setCloudError(null)
+      })
+      .catch((error: unknown) => {
+        if (!active) return
+        reportCloudError(error, 'Supabase database validation failed.')
+      })
+    return () => { active = false }
+  }, [client, isDemo, reportCloudError])
 
   useEffect(() => {
     let removeListener: (() => Promise<void>) | undefined
@@ -132,11 +166,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     let active = true
     setAuthLoading(true)
-    client.auth.getSession().then(({ data }) => {
+    client.auth.getSession().then(({ data, error }) => {
+      if (error) throw error
       if (!active) return
       setSession(data.session)
       setUser(data.session?.user ? { id: data.session.user.id, email: data.session.user.email || 'Account' } : null)
       setAuthLoading(false)
+    }).catch((error: unknown) => {
+      if (!active) return
+      setSession(null)
+      setUser(null)
+      setAuthLoading(false)
+      setCloudError(getSupabaseErrorMessage(error, 'Your saved Supabase session could not be restored.'))
     })
     const { data: listener } = client.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession)
@@ -149,19 +190,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [client, config])
 
-  // Complete OAuth PKCE when Google/Apple redirects back into the native app.
-  useEffect(() => {
-    if (!client || !Capacitor.isNativePlatform()) return
-    let removeListener: (() => Promise<void>) | undefined
-    CapacitorApp.addListener('appUrlOpen', async ({ url }) => {
-      if (!url.startsWith('com.cashbook.app://auth/callback')) return
-      const code = new URL(url).searchParams.get('code')
-      if (code) await client.auth.exchangeCodeForSession(code)
-      await Browser.close().catch(() => undefined)
-    }).then((handle) => { removeListener = () => handle.remove() })
-    return () => { void removeListener?.() }
-  }, [client])
-
   const refreshPendingCount = useCallback(async () => {
     if (!user || isDemo) return setPendingChanges(0)
     setPendingChanges(await pendingMutationCount(user.id))
@@ -170,16 +198,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const refreshTransactions = useCallback(async () => {
     if (!user) {
       setTransactions([])
-      return
+      return false
     }
     if (isDemo) {
       setTransactions(readDemoTransactions())
-      return
+      return true
     }
 
     const cached = await loadCachedTransactions(user.id).catch(() => [])
     if (cached.length) setTransactions(cached)
-    if (!client || !isOnline) return
+    if (!client || !isOnline || cloudStatus !== 'ready') return false
 
     setTransactionsLoading(true)
     try {
@@ -192,24 +220,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const cloudRows = (data || []).map((row) => normalizeTransaction(row as Record<string, unknown>))
       const merged = await cacheCloudSnapshot(user.id, cloudRows)
       setTransactions(merged)
+      setCloudError(null)
+      return true
+    } catch (error) {
+      if (!isNetworkFailure(error)) reportCloudError(error, 'Transactions could not be loaded from Supabase.')
+      return false
     } finally {
       setTransactionsLoading(false)
     }
-  }, [client, isDemo, isOnline, user])
+  }, [client, cloudStatus, isDemo, isOnline, reportCloudError, user])
 
   const syncNow = useCallback(async () => {
-    if (!client || !user || isDemo || !isOnline || syncLock.current) return
+    if (!client || !user || isDemo || !isOnline || cloudStatus !== 'ready' || syncLock.current) return
     syncLock.current = true
     setIsSyncing(true)
     try {
-      await client.auth.getSession()
+      const { error } = await client.auth.getSession()
+      if (error) throw error
       await flushOutbox(client, user.id)
       await refreshPendingCount()
+      setCloudError(null)
+    } catch (error) {
+      if (!isNetworkFailure(error)) reportCloudError(error, 'Queued changes could not be synchronized.')
     } finally {
       syncLock.current = false
       setIsSyncing(false)
     }
-  }, [client, isDemo, isOnline, refreshPendingCount, user])
+  }, [client, cloudStatus, isDemo, isOnline, refreshPendingCount, reportCloudError, user])
 
   // Load cache immediately, flush the outbox when possible, then reconcile cloud.
   useEffect(() => {
@@ -218,22 +255,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
     void (async () => {
-      try {
+      const cloudReady = await refreshTransactions()
+      await refreshPendingCount()
+      if (cloudReady && isOnline && !isDemo) {
+        await syncNow()
         await refreshTransactions()
-        await refreshPendingCount()
-        if (isOnline && !isDemo) {
-          await syncNow()
-          await refreshTransactions()
-        }
-      } catch {
-        // Cached rows remain available when sync cannot complete.
       }
     })()
   }, [isDemo, isOnline, refreshPendingCount, refreshTransactions, syncNow, user])
 
   // Supabase Realtime updates the in-memory UI and the offline cache together.
   useEffect(() => {
-    if (!client || !user || isDemo || !isOnline) return
+    if (!client || !user || isDemo || !isOnline || cloudStatus !== 'ready') return
     const applyRealtime = (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       if (payload.eventType === 'DELETE') {
         const deletedId = String(payload.old.id)
@@ -250,7 +283,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` }, applyRealtime)
       .subscribe()
     return () => { void client.removeChannel(channel) }
-  }, [client, isDemo, isOnline, user])
+  }, [client, cloudStatus, isDemo, isOnline, user])
 
   const persistDemoTransactions = (next: Transaction[]) => {
     setTransactions(next)
@@ -271,10 +304,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const configureSupabase = useCallback((url: string, anonKey: string) => {
     setTransactions([])
+    setCloudError(null)
+    setCloudStatus('checking')
     setConfig(persistConfiguration(url, anonKey))
   }, [])
   const enableDemo = useCallback(() => {
     setTransactions([])
+    setCloudError(null)
+    setCloudStatus('idle')
     setConfig(persistDemoMode())
   }, [])
   const resetConfiguration = useCallback(async () => {
@@ -284,36 +321,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSession(null)
     setUser(null)
     setTransactions([])
+    setCloudStatus('idle')
+    setCloudError(null)
   }, [client])
 
   const signIn = async (email: string, password: string) => {
     if (!client) throw new Error('Supabase is not configured.')
     const { error } = await client.auth.signInWithPassword({ email, password })
-    if (error) throw error
-  }
-  const signInWithProvider = async (provider: 'google' | 'apple') => {
-    if (!client) throw new Error('Supabase is not configured.')
-    const native = Capacitor.isNativePlatform()
-    const redirectTo = native ? 'com.cashbook.app://auth/callback' : `${window.location.origin}/`
-    const { data, error } = await client.auth.signInWithOAuth({
-      provider: provider as Provider,
-      options: { redirectTo, skipBrowserRedirect: native },
-    })
-    if (error) throw error
-    if (native && data.url) await Browser.open({ url: data.url, presentationStyle: 'popover' })
+    if (error) throw new Error(getSupabaseErrorMessage(error, 'Sign-in failed.'))
   }
 
   const signUp = async (email: string, password: string): Promise<SignUpResult> => {
     if (!client) throw new Error('Supabase is not configured.')
     const { data, error } = await client.auth.signUp({ email, password })
-    if (error) throw error
+    if (error) throw new Error(getSupabaseErrorMessage(error, 'Registration failed.'))
     return { needsEmailConfirmation: !data.session }
   }
   const signOut = async () => {
     if (isDemo) return resetConfiguration()
     if (client) {
       const { error } = await client.auth.signOut()
-      if (error) throw error
+      if (error) throw new Error(getSupabaseErrorMessage(error, 'Could not sign out.'))
     }
   }
 
@@ -325,14 +353,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setTransactions((current) => [local, ...current])
     await cacheTransaction(local)
-    if (!client || !isOnline) return queueOffline('create', local, local.id)
+    if (!client || !isOnline || cloudStatus !== 'ready') return queueOffline('create', local, local.id)
 
     const { data, error } = await client.from('transactions').insert(local).select().single()
     if (error) {
       if (isNetworkFailure(error)) return queueOffline('create', local, local.id)
       setTransactions((current) => current.filter((row) => row.id !== local.id))
       await removeCachedTransaction(local.id)
-      throw error
+      throw new Error(reportCloudError(error, 'The transaction could not be saved.'))
     }
     const saved = normalizeTransaction(data as Record<string, unknown>)
     setTransactions((current) => [saved, ...current.filter((row) => row.id !== saved.id)])
@@ -348,7 +376,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setTransactions((current) => current.map((row) => row.id === id ? local : row))
     await cacheTransaction(local)
-    if (!client || !isOnline) return queueOffline('update', local, id)
+    if (!client || !isOnline || cloudStatus !== 'ready') return queueOffline('update', local, id)
 
     const changes: Partial<Transaction> = { ...local }
     delete changes.id
@@ -359,7 +387,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (isNetworkFailure(error)) return queueOffline('update', local, id)
       setTransactions((current) => current.map((row) => row.id === id ? previous : row))
       await cacheTransaction(previous)
-      throw error
+      throw new Error(reportCloudError(error, 'The transaction could not be updated.'))
     }
     const saved = normalizeTransaction(data as Record<string, unknown>)
     setTransactions((current) => current.map((row) => row.id === id ? saved : row))
@@ -374,14 +402,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setTransactions((current) => current.filter((row) => row.id !== id))
     await removeCachedTransaction(id)
-    if (!client || !isOnline) return queueOffline('delete', null, id)
+    if (!client || !isOnline || cloudStatus !== 'ready') return queueOffline('delete', null, id)
 
     const { error } = await client.from('transactions').delete().eq('id', id)
     if (error) {
       if (isNetworkFailure(error)) return queueOffline('delete', null, id)
       setTransactions((current) => [previous, ...current])
       await cacheTransaction(previous)
-      throw error
+      throw new Error(reportCloudError(error, 'The transaction could not be deleted.'))
     }
   }
 
@@ -395,11 +423,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isOnline,
     isSyncing,
     pendingChanges,
+    cloudStatus,
+    cloudError,
+    reportCloudError,
+    clearCloudError,
     configureSupabase,
     enableDemo,
     resetConfiguration,
     signIn,
-    signInWithProvider,
     signUp,
     signOut,
     addTransaction,

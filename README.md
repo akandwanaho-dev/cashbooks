@@ -4,7 +4,7 @@ A production-ready, offline-capable digital cash ledger built with React, TypeSc
 
 ## Features
 
-- Email/password, Google, and Apple authentication with Supabase Auth
+- Secure email/password authentication with Supabase Auth
 - Multiple accounts/expense boxes for Home, School, Business, Transport and more
 - Profiles, avatars, notification preferences and daily money motivation
 - Protected administrator console for users, quotes, themes, pages and errors
@@ -35,17 +35,11 @@ Open the displayed local URL. If environment variables are absent, the app opens
 ## Supabase setup
 
 1. Create a Supabase project.
-2. Open **SQL Editor** and run [`supabase/schema.sql`](./supabase/schema.sql), [`supabase/mobile_migration.sql`](./supabase/mobile_migration.sql), then [`supabase/product_migration.sql`](./supabase/product_migration.sql). Existing deployments should run both migration files.
-3. In Authentication settings, configure your Site URL and allowed redirect URLs for the deployed app.
+2. Open **SQL Editor** and run these files in order: [`supabase/schema.sql`](./supabase/schema.sql), [`supabase/mobile_migration.sql`](./supabase/mobile_migration.sql), [`supabase/product_migration.sql`](./supabase/product_migration.sql), then [`supabase/admin_bootstrap.sql`](./supabase/admin_bootstrap.sql).
+3. In Authentication settings, enable email/password registration and configure your Site URL.
 4. Supply the Project URL and **anon/publishable** key either in `.env.local` or in the runtime configuration screen.
-5. Enable Google and Apple in Supabase Authentication Providers if those buttons will be used.
-6. Bootstrap the first administrator in SQL using their Auth user UUID:
-
-```sql
-insert into public.user_roles(user_id, role)
-values ('YOUR-AUTH-USER-UUID', 'admin');
-```
-
+5. Register or sign in as `ming.zhu@atomicmail.io`. The fourth migration assigns that account the protected `admin` role whether it exists before or after the migration runs.
+6. Confirm the role with `select * from public.user_roles;` in SQL Editor. The UI intentionally relies on this server-side role and RLS, never on a client-side email comparison.
 7. Never use the `service_role` key in this frontend.
 
 ```env
@@ -80,4 +74,8 @@ npm run desktop:dev     # Tauri
 npm run desktop:build   # native package for current desktop OS
 ```
 
-`vercel.json` includes the SPA rewrite required for direct web navigation to `/login`, `/ledger`, and `/settings`.
+## Release downloads
+
+Generated release files live in `releases/`. The in-app **Downloads** page serves published files from `public/downloads/`; only copy artifacts there after their build and checksum verification succeeds. Android test APKs can be built on Linux, while signed iOS/macOS outputs require macOS/Xcode and signed Windows installers require a Windows build host.
+
+`vercel.json` includes the SPA rewrite required for direct web navigation to `/login`, `/ledger`, `/settings`, and `/downloads`.

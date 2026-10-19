@@ -19,8 +19,6 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
-    "@capacitor/app": "^8.1.2",
-    "@capacitor/browser": "^8.0.1",
     "@capacitor/core": "^8.5.2",
     "@capacitor/ios": "^8.5.2",
     "@capacitor/local-notifications": "^8.3.1",
@@ -36,7 +34,7 @@
     "@supabase/supabase-js": "^2.57.4",
     "@tanstack/react-table": "^8.21.3",
     "@tauri-apps/api": "^2.12.1",
-    "@tauri-apps/plugin-notification": "^2.5.1",
+    "@tauri-apps/plugin-notification": "^2.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

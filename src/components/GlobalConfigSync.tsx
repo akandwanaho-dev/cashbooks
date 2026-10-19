@@ -31,7 +31,7 @@ function applyThemeSettings(value: Record<string, unknown> | null) {
 }
 
 export default function GlobalConfigSync() {
-  const { config, isDemo, user } = useApp()
+  const { config, isDemo, user, cloudStatus, reportCloudError } = useApp()
   const client = getSupabaseClient(config)
   useEffect(() => {
     if (!user) return
@@ -42,14 +42,26 @@ export default function GlobalConfigSync() {
       sync(); window.addEventListener(GLOBAL_CONFIG_EVENT, sync)
       return () => window.removeEventListener(GLOBAL_CONFIG_EVENT, sync)
     }
-    if (!client) return
+    if (!client || cloudStatus !== 'ready') return
+    let active = true
+    let channel: ReturnType<typeof client.channel> | null = null
     const sync = async () => {
-      const { data } = await client.from('app_settings').select('value').eq('setting_key', 'themes').maybeSingle()
-      applyThemeSettings(data?.value as Record<string, unknown> | null)
+      const { data, error } = await client.from('app_settings').select('value').eq('setting_key', 'themes').maybeSingle()
+      if (error) {
+        reportCloudError(error, 'Application settings could not be loaded.')
+        return false
+      }
+      if (active) applyThemeSettings(data?.value as Record<string, unknown> | null)
+      return true
     }
-    void sync()
-    const channel = client.channel('global-app-settings').on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => void sync()).subscribe()
-    return () => { void client.removeChannel(channel) }
-  }, [client, isDemo, user])
+    void sync().then((ready) => {
+      if (!active || !ready) return
+      channel = client.channel('global-app-settings').on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => void sync()).subscribe()
+    })
+    return () => {
+      active = false
+      if (channel) void client.removeChannel(channel)
+    }
+  }, [client, cloudStatus, isDemo, reportCloudError, user])
   return null
 }

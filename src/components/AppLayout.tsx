@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BellRing, BookOpenText, ChevronDown, CloudUpload, Info, LayoutDashboard, Lightbulb, LogOut, Menu, Plus, Settings, ShieldCheck, UserRound, WalletCards, WifiOff, X, Zap } from 'lucide-react'
+import { AlertTriangle, BellRing, BookOpenText, ChevronDown, CloudUpload, Download, Info, LayoutDashboard, Lightbulb, LogOut, Menu, Plus, Settings, ShieldCheck, UserRound, WalletCards, WifiOff, X, Zap } from 'lucide-react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
@@ -25,6 +25,7 @@ const navigation = [
   { label: 'Money Quotes', href: '/quotes', icon: Lightbulb },
   { label: 'Profile', href: '/profile', icon: UserRound },
   { label: 'Settings', href: '/settings', icon: Settings },
+  { label: 'Downloads', href: '/downloads', icon: Download },
   { label: 'About & Creators', href: '/about', icon: Info },
 ]
 
@@ -36,15 +37,16 @@ const pageMeta: Record<string, { title: string; subtitle: string }> = {
   '/notifications': { title: 'Notifications', subtitle: 'Choose useful reminders and motivation.' },
   '/quotes': { title: 'Money Quotes', subtitle: 'Build a healthier financial mindset.' },
   '/profile': { title: 'Profile', subtitle: 'Manage your identity and personal details.' },
-  '/settings': { title: 'Settings', subtitle: 'Manage your workspace and connection.' },
+  '/settings': { title: 'Settings', subtitle: 'Manage your personal Cashbook preferences.' },
+  '/downloads': { title: 'Downloads', subtitle: 'Get verified Cashbook application builds.' },
   '/about': { title: 'About', subtitle: 'Meet the people and purpose behind Cashbook.' },
 }
 
 function SidebarContent({ close }: { close?: () => void }) {
-  const { isDemo, isOnline, isSyncing, pendingChanges, syncNow } = useApp()
+  const { isDemo, isOnline, isSyncing, pendingChanges, cloudStatus, syncNow } = useApp()
   const { isAdmin } = useWorkspace()
-  const status = isDemo ? 'DEMO' : !isOnline ? 'OFFLINE' : isSyncing ? 'SYNCING' : pendingChanges ? `${pendingChanges} QUEUED` : 'LIVE'
-  const statusColor = isDemo || !isOnline || pendingChanges ? 'text-amber-400' : 'text-emerald-400'
+  const status = isDemo ? 'DEMO' : cloudStatus === 'error' ? 'SETUP' : cloudStatus === 'checking' ? 'CHECKING' : !isOnline ? 'OFFLINE' : isSyncing ? 'SYNCING' : pendingChanges ? `${pendingChanges} QUEUED` : 'LIVE'
+  const statusColor = isDemo || cloudStatus === 'error' || !isOnline || pendingChanges ? 'text-amber-400' : 'text-emerald-400'
   return (
     <>
       <div className="flex h-20 items-center px-6"><Logo /></div>
@@ -62,8 +64,8 @@ function SidebarContent({ close }: { close?: () => void }) {
       <div className="mt-auto p-4">
         <div className="rounded-2xl border border-white/[.08] bg-white/[.04] p-4">
           <div className="flex items-center justify-between"><span className="text-xs font-medium text-zinc-300">Sync status</span><span className={cn('flex items-center gap-1.5 text-[10px] font-semibold', statusColor)}>{!isOnline && !isDemo ? <WifiOff className="h-3 w-3" /> : <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-50"/><span className="relative inline-flex h-2 w-2 rounded-full bg-current"/></span>}{status}</span></div>
-          <p className="mt-2 text-[11px] leading-5 text-zinc-500">{isDemo ? 'Changes are saved on this device.' : !isOnline ? 'Entries are cached and will sync when online.' : pendingChanges ? 'Offline changes are ready to upload.' : 'Your ledger is synced with Supabase.'}</p>
-          {!isDemo && isOnline && pendingChanges > 0 && <button onClick={() => void syncNow()} className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-emerald-400 hover:text-emerald-300"><CloudUpload className="h-3.5 w-3.5" />Sync now</button>}
+          <p className="mt-2 text-[11px] leading-5 text-zinc-500">{isDemo ? 'Changes are saved on this device.' : cloudStatus === 'error' ? 'Supabase needs the Cashbook migrations before cloud sync can start.' : cloudStatus === 'checking' ? 'Checking the Supabase database schema.' : !isOnline ? 'Entries are cached and will sync when online.' : pendingChanges ? 'Offline changes are ready to upload.' : 'Your ledger is synced with Supabase.'}</p>
+          {!isDemo && isOnline && cloudStatus === 'ready' && pendingChanges > 0 && <button onClick={() => void syncNow()} className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-emerald-400 hover:text-emerald-300"><CloudUpload className="h-3.5 w-3.5" />Sync now</button>}
         </div>
         <p className="mt-4 px-2 text-[10px] text-zinc-600">Cashbook v1.0 · Private by default</p>
       </div>
@@ -72,7 +74,7 @@ function SidebarContent({ close }: { close?: () => void }) {
 }
 
 export default function AppLayout() {
-  const { user, signOut, isDemo, isOnline, pendingChanges } = useApp()
+  const { user, signOut, isDemo, isOnline, pendingChanges, cloudStatus, cloudError, enableDemo } = useApp()
   const { preferredCurrency, currencies, setPreferredCurrency } = useCurrency()
   const { profile } = useWorkspace()
   const location = useLocation()
@@ -145,6 +147,9 @@ export default function AppLayout() {
             </DropdownMenu>
           </div>
         </header>
+
+        {!isDemo && cloudError && <div role="alert" className="mx-4 mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100 sm:mx-6 sm:flex-row sm:items-center lg:mx-8"><div className="flex min-w-0 gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" /><div><p className="text-sm font-semibold">Supabase setup required</p><p className="mt-1 text-xs leading-5 opacity-80">{cloudError}</p></div></div><Button type="button" variant="outline" size="sm" className="shrink-0 sm:ml-auto" onClick={() => { enableDemo(); toast.success('Demo workspace opened') }}>Use demo mode</Button></div>}
+        {!isDemo && cloudStatus === 'checking' && <div className="mx-4 mt-4 rounded-xl border bg-muted/40 px-4 py-3 text-xs text-muted-foreground sm:mx-6 lg:mx-8">Checking Supabase database setup…</div>}
 
         <main className="min-h-[calc(100vh-5rem)] p-4 sm:p-6 lg:p-8"><Outlet /></main>
       </div>

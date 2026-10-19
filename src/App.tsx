@@ -15,6 +15,7 @@ const Quotes = lazy(() => import('@/pages/Quotes'))
 const Profile = lazy(() => import('@/pages/Profile'))
 const SettingsPage = lazy(() => import('@/pages/Settings'))
 const About = lazy(() => import('@/pages/About'))
+const Downloads = lazy(() => import('@/pages/Downloads'))
 const AdminLayout = lazy(() => import('@/pages/admin/AdminLayout'))
 const AdminOverview = lazy(() => import('@/pages/admin/AdminOverview'))
 const AdminUsers = lazy(() => import('@/pages/admin/AdminUsers'))
@@ -31,7 +32,7 @@ export default function App() {
   if (!config) return <Suspense fallback={<AppLoading />}><DatabaseConfiguration /></Suspense>
 
   if (!user) {
-    return <Suspense fallback={<AppLoading />}><Routes><Route path="/login" element={<AuthPage mode="login" />} /><Route path="/signup" element={<AuthPage mode="signup" />} /><Route path="*" element={<Navigate to="/login" replace />} /></Routes></Suspense>
+    return <Suspense fallback={<AppLoading />}><Routes><Route path="/login" element={<AuthPage mode="login" />} /><Route path="/signup" element={<AuthPage mode="signup" />} /><Route path="/downloads" element={<main className="min-h-screen bg-background p-4 sm:p-7"><Downloads /></main>} /><Route path="*" element={<Navigate to="/login" replace />} /></Routes></Suspense>
   }
 
   return <Suspense fallback={<AppLoading />}><Routes>
@@ -45,6 +46,7 @@ export default function App() {
       <Route path="profile" element={<Profile />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route path="about" element={<About />} />
+      <Route path="downloads" element={<Downloads />} />
     </Route>
     <Route path="admin" element={<AdminLayout />}>
       <Route index element={<AdminOverview />} />

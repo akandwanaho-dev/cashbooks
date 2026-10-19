@@ -1,5 +1,4 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { toast } from 'sonner'
 import { useApp } from '@/contexts/AppContext'
 import { getSupabaseClient } from '@/lib/supabaseClient'
 import type { MoneyAccount, MoneyQuote, NotificationPreferences, UserProfile } from '@/types'
@@ -59,7 +58,7 @@ interface WorkspaceContextValue {
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const { config, user, isDemo } = useApp()
+  const { config, user, isDemo, cloudStatus, reportCloudError } = useApp()
   const client = useMemo(() => getSupabaseClient(config), [config])
   const [accounts, setAccounts] = useState<MoneyAccount[]>([])
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -100,17 +99,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const refreshWorkspace = useCallback(async () => {
     if (!user) return
     if (isDemo) return loadDemo()
-    if (!client) return
-    setWorkspaceLoading(true)
-    const [accountsResult, profileResult, quotesResult, preferencesResult, roleResult] = await Promise.all([
-      client.from('accounts').select('*').eq('user_id', user.id).order('sort_order'),
-      client.from('profiles').select('*').eq('user_id', user.id).maybeSingle(),
-      client.from('money_quotes').select('*').order('created_at', { ascending: false }),
-      client.from('notification_preferences').select('*').eq('user_id', user.id).maybeSingle(),
-      client.from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').maybeSingle(),
-    ])
-    if (accountsResult.error) toast.error('Accounts could not be loaded. Run the product migration in Supabase.')
-    setAccounts((accountsResult.data || []) as MoneyAccount[])
+
     const fallbackProfile: UserProfile = {
       user_id: user.id,
       username: user.email.split('@')[0],
@@ -122,9 +111,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       created_at: now(),
       updated_at: now(),
     }
-    setProfile((profileResult.data as UserProfile | null) || fallbackProfile)
-    setQuotes((quotesResult.data || []) as MoneyQuote[])
-    setNotificationPreferences((preferencesResult.data as NotificationPreferences | null) || {
+    const fallbackPreferences: NotificationPreferences = {
       user_id: user.id,
       daily_reminder_enabled: false,
       daily_reminder_time: '19:00',
@@ -133,10 +120,42 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       debt_reminders_enabled: true,
       push_enabled: false,
       updated_at: now(),
-    })
-    setIsAdmin(Boolean(roleResult.data))
-    setWorkspaceLoading(false)
-  }, [client, isDemo, loadDemo, user])
+    }
+
+    if (!client || cloudStatus !== 'ready') {
+      setProfile(fallbackProfile)
+      setNotificationPreferences(fallbackPreferences)
+      setIsAdmin(false)
+      setWorkspaceLoading(cloudStatus === 'checking')
+      return
+    }
+
+    setWorkspaceLoading(true)
+    try {
+      const [accountsResult, profileResult, quotesResult, preferencesResult, roleResult] = await Promise.all([
+        client.from('accounts').select('*').eq('user_id', user.id).order('sort_order'),
+        client.from('profiles').select('*').eq('user_id', user.id).maybeSingle(),
+        client.from('money_quotes').select('*').order('created_at', { ascending: false }),
+        client.from('notification_preferences').select('*').eq('user_id', user.id).maybeSingle(),
+        client.from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').maybeSingle(),
+      ])
+      const failed = [accountsResult, profileResult, quotesResult, preferencesResult, roleResult].find((result) => result.error)
+      if (failed?.error) reportCloudError(failed.error, 'Your Supabase workspace could not be loaded.')
+
+      setAccounts((accountsResult.data || []) as MoneyAccount[])
+      setProfile((profileResult.data as UserProfile | null) || fallbackProfile)
+      setQuotes((quotesResult.data || []) as MoneyQuote[])
+      setNotificationPreferences((preferencesResult.data as NotificationPreferences | null) || fallbackPreferences)
+      setIsAdmin(Boolean(roleResult.data))
+    } catch (error) {
+      reportCloudError(error, 'Your Supabase workspace could not be loaded.')
+      setProfile(fallbackProfile)
+      setNotificationPreferences(fallbackPreferences)
+      setIsAdmin(false)
+    } finally {
+      setWorkspaceLoading(false)
+    }
+  }, [client, cloudStatus, isDemo, loadDemo, reportCloudError, user])
 
   useEffect(() => {
     if (!user) {
@@ -144,47 +163,58 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return
     }
     void refreshWorkspace()
-    if (!client || isDemo) return
+    if (!client || isDemo || cloudStatus !== 'ready') return
     const channel = client.channel(`workspace:${user.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'accounts', filter: `user_id=eq.${user.id}` }, () => void refreshWorkspace())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `user_id=eq.${user.id}` }, () => void refreshWorkspace())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'money_quotes' }, () => void refreshWorkspace())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_roles', filter: `user_id=eq.${user.id}` }, () => void refreshWorkspace())
       .subscribe()
     return () => { void client.removeChannel(channel) }
-  }, [client, isDemo, refreshWorkspace, user])
+  }, [client, cloudStatus, isDemo, refreshWorkspace, user])
+
+  const getReadyClient = () => {
+    if (!client || cloudStatus !== 'ready') {
+      throw new Error('The Supabase workspace is not ready. Complete the database migrations or use demo mode.')
+    }
+    return client
+  }
+  const failCloudRequest = (error: unknown, fallback: string): never => {
+    throw new Error(reportCloudError(error, fallback))
+  }
 
   const createAccount = async (input: AccountInput) => {
     if (!user) throw new Error('Sign in to create an account.')
     const entry: MoneyAccount = { ...input, id: crypto.randomUUID(), user_id: user.id, archived: false, sort_order: accounts.length + 1, created_at: now(), updated_at: now() }
     if (isDemo) { const next = [...accounts, entry]; setAccounts(next); writeLocal(DEMO_ACCOUNTS_KEY, next); return }
-    if (!client) throw new Error('Database is unavailable.')
-    const { data, error } = await client.from('accounts').insert(entry).select().single()
-    if (error) throw error
+    const database = getReadyClient()
+    const { data, error } = await database.from('accounts').insert(entry).select().single()
+    if (error) failCloudRequest(error, 'The account could not be created.')
     setAccounts((current) => [...current, data as MoneyAccount])
   }
   const updateAccount = async (id: string, input: AccountInput) => {
     const next = accounts.map((item) => item.id === id ? { ...item, ...input, updated_at: now() } : item)
     if (isDemo) { setAccounts(next); writeLocal(DEMO_ACCOUNTS_KEY, next); return }
-    if (!client) throw new Error('Database is unavailable.')
-    const { error } = await client.from('accounts').update(input).eq('id', id)
-    if (error) throw error
+    const database = getReadyClient()
+    const { error } = await database.from('accounts').update(input).eq('id', id)
+    if (error) failCloudRequest(error, 'The account could not be updated.')
     setAccounts(next)
   }
   const deleteAccount = async (id: string) => {
     const next = accounts.filter((item) => item.id !== id)
     if (isDemo) { setAccounts(next); writeLocal(DEMO_ACCOUNTS_KEY, next); return }
-    if (!client) throw new Error('Database is unavailable.')
-    const { error } = await client.from('accounts').delete().eq('id', id)
-    if (error) throw error
+    const database = getReadyClient()
+    const { error } = await database.from('accounts').delete().eq('id', id)
+    if (error) failCloudRequest(error, 'The account could not be deleted.')
     setAccounts(next)
   }
   const updateProfile = async (input: ProfileInput) => {
     if (!user || !profile) throw new Error('Profile is unavailable.')
     const next = { ...profile, ...input, updated_at: now() }
     if (isDemo) { setProfile(next); writeLocal(DEMO_PROFILE_KEY, next); return }
-    if (!client) throw new Error('Database is unavailable.')
-    const { data, error } = await client.from('profiles').upsert(next, { onConflict: 'user_id' }).select().single()
-    if (error) throw error
+    const database = getReadyClient()
+    const { data, error } = await database.from('profiles').upsert(next, { onConflict: 'user_id' }).select().single()
+    if (error) failCloudRequest(error, 'Your profile could not be updated.')
     setProfile(data as UserProfile)
   }
   const uploadAvatar = async (file: File) => {
@@ -194,48 +224,52 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (profile) { const next = { ...profile, avatar_url: url }; setProfile(next) }
       return url
     }
-    if (!client) throw new Error('Database is unavailable.')
+    const database = getReadyClient()
     const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg'
     const path = `${user.id}/avatar.${extension}`
-    const { error } = await client.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type })
-    if (error) throw error
-    const { data } = client.storage.from('avatars').getPublicUrl(path)
-    await client.from('profiles').update({ avatar_url: `${data.publicUrl}?v=${Date.now()}` }).eq('user_id', user.id)
-    setProfile((current) => current ? { ...current, avatar_url: `${data.publicUrl}?v=${Date.now()}` } : current)
-    return data.publicUrl
+    const { error } = await database.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type })
+    if (error) failCloudRequest(error, 'The avatar could not be uploaded.')
+    const { data } = database.storage.from('avatars').getPublicUrl(path)
+    const avatarUrl = `${data.publicUrl}?v=${Date.now()}`
+    const { error: profileError } = await database.from('profiles').update({ avatar_url: avatarUrl }).eq('user_id', user.id)
+    if (profileError) failCloudRequest(profileError, 'The profile avatar could not be saved.')
+    setProfile((current) => current ? { ...current, avatar_url: avatarUrl } : current)
+    return avatarUrl
   }
   const updateNotificationPreferences = async (changes: Partial<NotificationPreferences>) => {
     if (!user || !notificationPreferences) throw new Error('Preferences are unavailable.')
     const next = { ...notificationPreferences, ...changes, user_id: user.id, updated_at: now() }
     if (isDemo) { setNotificationPreferences(next); writeLocal(DEMO_PREFS_KEY, next); return }
-    if (!client) throw new Error('Database is unavailable.')
-    const { data, error } = await client.from('notification_preferences').upsert(next, { onConflict: 'user_id' }).select().single()
-    if (error) throw error
+    const database = getReadyClient()
+    const { data, error } = await database.from('notification_preferences').upsert(next, { onConflict: 'user_id' }).select().single()
+    if (error) failCloudRequest(error, 'Notification preferences could not be saved.')
     setNotificationPreferences(data as NotificationPreferences)
   }
   const createQuote = async (input: Pick<MoneyQuote, 'text' | 'author' | 'category' | 'active'>) => {
     if (!user || !isAdmin) throw new Error('Administrator access required.')
     const entry: MoneyQuote = { ...input, id: crypto.randomUUID(), created_by: user.id, created_at: now(), updated_at: now() }
     if (isDemo) { const next = [entry, ...quotes]; setQuotes(next); writeLocal(DEMO_QUOTES_KEY, next); return }
-    if (!client) throw new Error('Database is unavailable.')
-    const { data, error } = await client.from('money_quotes').insert(entry).select().single()
-    if (error) throw error
+    const database = getReadyClient()
+    const { data, error } = await database.from('money_quotes').insert(entry).select().single()
+    if (error) failCloudRequest(error, 'The quote could not be created.')
     setQuotes((current) => [data as MoneyQuote, ...current])
   }
   const updateQuote = async (id: string, changes: Partial<MoneyQuote>) => {
     const next = quotes.map((item) => item.id === id ? { ...item, ...changes, updated_at: now() } : item)
     if (isDemo) { setQuotes(next); writeLocal(DEMO_QUOTES_KEY, next); return }
-    if (!client || !isAdmin) throw new Error('Administrator access required.')
-    const { error } = await client.from('money_quotes').update(changes).eq('id', id)
-    if (error) throw error
+    if (!isAdmin) throw new Error('Administrator access required.')
+    const database = getReadyClient()
+    const { error } = await database.from('money_quotes').update(changes).eq('id', id)
+    if (error) failCloudRequest(error, 'The quote could not be updated.')
     setQuotes(next)
   }
   const deleteQuote = async (id: string) => {
     const next = quotes.filter((item) => item.id !== id)
     if (isDemo) { setQuotes(next); writeLocal(DEMO_QUOTES_KEY, next); return }
-    if (!client || !isAdmin) throw new Error('Administrator access required.')
-    const { error } = await client.from('money_quotes').delete().eq('id', id)
-    if (error) throw error
+    if (!isAdmin) throw new Error('Administrator access required.')
+    const database = getReadyClient()
+    const { error } = await database.from('money_quotes').delete().eq('id', id)
+    if (error) failCloudRequest(error, 'The quote could not be deleted.')
     setQuotes(next)
   }
 

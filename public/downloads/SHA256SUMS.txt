@@ -1,0 +1,2 @@
+8e588ef38f4131bcdca97153c98acbae1738bad6d7637fb64f4aacbe18c500a1  Cashbook-1.0.0-android-debug.apk
+e717b470375dd92af6109d87cf4f62ae4637e5abae0daf5b9f32e20315062290  Cashbook-1.0.0-web.zip
