@@ -9,6 +9,7 @@ const teamMembers = [
   'Ana Frida',
   'Adewale Benjamin',
   'Otim Henry',
+  'Kitandandwe Zion',
 ] as const
 
 const responsibilities = [
@@ -37,7 +38,7 @@ export default function AboutPage() {
         <h3 className="mt-2 text-2xl font-bold">Design & development team</h3>
         <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground">The people who planned, designed, programmed, and maintained Cashbook.</p>
       </div>
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {teamMembers.map((name) => <Card key={name}>
           <CardContent className="p-5 text-center">
             <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400"><Code2 className="h-5 w-5" /></span>
