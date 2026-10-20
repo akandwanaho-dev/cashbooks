@@ -6,12 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useApp } from '@/contexts/AppContext'
+import { pageSettingsDefaults } from '@/lib/globalSettings'
 import { getSupabaseClient } from '@/lib/supabaseClient'
 
 const definitions = {
   notifications: { title: 'Notification defaults', description: 'Control default reminder copy and schedules.', icon: BellRing, fields: { daily_time: '19:00', daily_title: 'Keep your cashbook current', daily_message: "Don't forget to log today's expenses.", quote_time: '08:00' } },
   themes: { title: 'Global theme', description: 'Set the product colors presented to new users.', icon: Palette, fields: { primary_color: '#10b981', accent_color: '#0ea5e9', default_mode: 'system', allow_user_override: 'true' } },
-  pages: { title: 'Page content', description: 'Customize key application headings and creator information.', icon: FileText, fields: { welcome_heading: 'Know exactly where your money goes.', about_heading: 'Better money habits, made simple.', creator_name: 'Cashbook Studio', support_email: 'support@cashbook.app' } },
+  pages: { title: 'Page content', description: 'Customize About content, Group Six members, roles, and support details.', icon: FileText, fields: pageSettingsDefaults },
   errors: { title: 'Error messages', description: 'Make failures clear, useful and human.', icon: MessageSquareWarning, fields: { network_error: 'You are offline. Changes will sync when your connection returns.', auth_error: 'We could not sign you in. Check your details and try again.', general_error: 'Something went wrong. Your saved data is safe.' } },
   settings: { title: 'Application settings', description: 'Manage global branding and operational configuration.', icon: Settings, fields: { app_name: 'Cashbook', copyright: `© ${new Date().getFullYear()} Cashbook Studio`, maintenance_mode: 'false', support_url: 'https://cashbook.app/support' } },
 } as const
