@@ -3,19 +3,21 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
+const downloadUrl = (file: string) => `${import.meta.env.BASE_URL}downloads/${file}`
+
 const readyBuilds = [
   {
     platform: 'Android',
     detail: 'Universal debug APK · Android 7.0+',
     file: 'Cashbook-1.0.0-android-debug.apk',
-    href: '/downloads/Cashbook-1.0.0-android-debug.apk',
+    href: downloadUrl('Cashbook-1.0.0-android-debug.apk'),
     icon: Smartphone,
   },
   {
     platform: 'Web',
     detail: 'Production static site bundle',
     file: 'Cashbook-1.0.0-web.zip',
-    href: '/downloads/Cashbook-1.0.0-web.zip',
+    href: downloadUrl('Cashbook-1.0.0-web.zip'),
     icon: Globe2,
   },
 ] as const
@@ -36,7 +38,7 @@ export default function Downloads() {
         <h2 className="mt-5 text-3xl font-bold tracking-[-.04em] sm:text-4xl">Download Cashbook</h2>
         <p className="mt-3 text-sm leading-7 text-zinc-400">Install a generated build or download the production web bundle. Verify downloads with the published SHA-256 checksum file.</p>
         <Button asChild variant="outline" className="mt-6 border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white">
-          <a href="/downloads/SHA256SUMS.txt" download><FileCheck2 className="h-4 w-4" />Download checksums</a>
+          <a href={downloadUrl('SHA256SUMS.txt')} download><FileCheck2 className="h-4 w-4" />Download checksums</a>
         </Button>
       </div>
     </section>

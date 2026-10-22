@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
+    "build:github": "tsc -b && vite build --mode github && node scripts/prepare-github-pages.mjs",
+    "build:pages": "npm run build:github && node scripts/sync-pages-docs.mjs",
     "lint": "eslint . --max-warnings=0",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc -b --pretty false",

@@ -74,8 +74,23 @@ npm run desktop:dev     # Tauri
 npm run desktop:build   # native package for current desktop OS
 ```
 
+## GitHub Pages deployment
+
+GitHub Pages publishes the tracked `docs/` directory from the `main` branch. The Pages build uses the required `/cashbooks/` project-site base path and includes an SPA `404.html` fallback for direct links.
+
+```bash
+npm ci
+npm run build:pages
+```
+
+That command creates the production `dist/` output and mirrors it into `docs/` for GitHub Pages. The repository's Pages source must be **Deploy from a branch → main → /docs**.
+
+Production URL: **https://akandwanaho-dev.github.io/cashbooks/**
+
+The deployed application opens its manual Database Configuration screen when no Supabase variables are compiled into the static build. Users can then enter the public project URL and publishable key in the browser.
+
 ## Release downloads
 
 Generated release files live in `releases/`. The in-app **Downloads** page serves published files from `public/downloads/`; only copy artifacts there after their build and checksum verification succeeds. Android test APKs can be built on Linux, while signed iOS/macOS outputs require macOS/Xcode and signed Windows installers require a Windows build host.
 
-`vercel.json` includes the SPA rewrite required for direct web navigation to `/login`, `/ledger`, `/settings`, and `/downloads`.
+`vercel.json` includes the SPA rewrite required for direct web navigation to `/login`, `/ledger`, `/settings`, and `/downloads` on Vercel.

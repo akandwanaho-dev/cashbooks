@@ -2,7 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'node:path'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // GitHub project pages are served from /cashbooks/. Native and regular web
+  // builds keep the root base so Capacitor can load packaged assets correctly.
+  base: mode === 'github' ? '/cashbooks/' : '/',
   plugins: [react()],
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
@@ -24,4 +27,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))
